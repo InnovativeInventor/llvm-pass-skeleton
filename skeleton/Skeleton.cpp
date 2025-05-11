@@ -3,6 +3,7 @@
 #include "llvm/Passes/PassBuilder.h"
 #include "llvm/Passes/PassPlugin.h"
 #include "llvm/Support/raw_ostream.h"
+#include "llvm/Transforms/Utils/Cloning.h"
 
 using namespace llvm;
 
@@ -11,9 +12,25 @@ namespace {
 struct SkeletonPass : public PassInfoMixin<SkeletonPass> {
     PreservedAnalyses run(Module &M, ModuleAnalysisManager &AM) {
         for (auto &F : M) {
-            errs() << "I saw a function called " << F.getName() << "!\n";
+          for (auto *caller : F.users()) {
+            if (auto* inst = dyn_cast<CallBase>(caller)) {
+              if (Function *func = inst->getCalledFunction()) {
+                // To prevent segfaults, conditions are a subset from:
+                // llvm/lib/Transforms/IPO/AlwaysInliner.cpp
+                if (func == &F 
+                    && isInlineViable(*func).isSuccess() 
+                    && !func->isPresplitCoroutine()
+                    && !func->isDeclaration() 
+                    ) {
+                  InlineFunctionInfo info;
+                  InlineResult res = InlineFunction(*inst, info);
+                  llvm::outs() << "Inline attempted, success: " << res << "\n";
+                }
+              }
+            }
+          }
         }
-        return PreservedAnalyses::all();
+        return PreservedAnalyses::none();
     };
 };
 
