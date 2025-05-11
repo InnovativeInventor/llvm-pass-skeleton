@@ -1,4 +1,6 @@
+# Set RNG seed here
 RNG="1"
+
 cd build
 LLVM_DIR=$(brew --prefix llvm)/lib/cmake/llvm cmake ..
 make clean
