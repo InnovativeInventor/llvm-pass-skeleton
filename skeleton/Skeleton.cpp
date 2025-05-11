@@ -4,13 +4,20 @@
 #include "llvm/Passes/PassPlugin.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Transforms/Utils/Cloning.h"
+#include "llvm/Support/RandomNumberGenerator.h"
 
 using namespace llvm;
 
 namespace {
 
+/*
+ * A super simple inliner fuzzer.
+ */
+
 struct SkeletonPass : public PassInfoMixin<SkeletonPass> {
     PreservedAnalyses run(Module &M, ModuleAnalysisManager &AM) {
+      auto counter = 0;
+      auto rng = M.createRNG("test");
         for (auto &F : M) {
           for (auto *caller : F.users()) {
             if (auto* inst = dyn_cast<CallBase>(caller)) {
@@ -22,14 +29,20 @@ struct SkeletonPass : public PassInfoMixin<SkeletonPass> {
                     && !func->isPresplitCoroutine()
                     && !func->isDeclaration() 
                     ) {
-                  InlineFunctionInfo info;
-                  InlineResult res = InlineFunction(*inst, info);
-                  llvm::outs() << "Inline attempted, success: " << res << "\n";
+                  if ((*rng)() > (*rng)()) {
+                    counter++;
+                    InlineFunctionInfo info;
+                    InlineResult res = InlineFunction(*inst, info);
+                    llvm::outs() << "Inline attempted, success?: " << res.isSuccess() << "\n";
+                  } else {
+                    llvm::outs() << "Inline ignored.\n";
+                  }
                 }
               }
             }
           }
         }
+        llvm::outs() << "Total inlines available: " << counter << "\n";
         return PreservedAnalyses::none();
     };
 };
@@ -40,7 +53,7 @@ extern "C" LLVM_ATTRIBUTE_WEAK ::llvm::PassPluginLibraryInfo
 llvmGetPassPluginInfo() {
     return {
         .APIVersion = LLVM_PLUGIN_API_VERSION,
-        .PluginName = "Skeleton pass",
+        .PluginName = "Inliner fuzzer",
         .PluginVersion = "v0.1",
         .RegisterPassBuilderCallbacks = [](PassBuilder &PB) {
             PB.registerPipelineStartEPCallback(
